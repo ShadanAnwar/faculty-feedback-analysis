@@ -1,0 +1,8 @@
+pandas
+streamlit
+openpyxl  
+langchain_groq
+langchain_community
+langchain
+langchain_core
+
