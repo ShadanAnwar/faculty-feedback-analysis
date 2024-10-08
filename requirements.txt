@@ -1,8 +1,8 @@
-langchain_groq==0.0.1  # Adjust the version accordingly if needed
-langchain_core==0.0.1  # Adjust the version accordingly if needed
-pandas==1.5.3
-matplotlib==3.7.1
+langchain_groq==0.1.9  # Adjust the version accordingly if needed
+langchain_core==0.2.38  # Adjust the version accordingly if needed
+pandas==2.0.3
+matplotlib==3.8.3
 fpdf==1.7.2
-streamlit==1.24.0
-textblob==0.17.1
+streamlit==1.26.0
+textblob==0.18.0.post0
 nltk==3.8.1
