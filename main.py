@@ -94,7 +94,7 @@ def create_personalized_summary(ay, sem, course_name, employee_code, feedback):
 
 # Streamlit Interface
 
-st.title('Feedback Summary and Sentiment Analysis with Individual Comments')
+st.title('Faculty Feedback Analysis')
 
 # Load data
 df = load_data()
@@ -161,6 +161,12 @@ for _, row in course_comments.iterrows():
     polarity = get_sentiment_textblob(comment)
     sentiment = classify_sentiment_textblob(polarity)
     sentiments[sentiment] += 1
+
+# Display sentiment counts
+st.write("**Sentiment Counts:**")
+for sentiment, count in sentiments.items():
+    st.write(f"{sentiment}: {count}")
+
 
 # Display pie chart
 labels = list(sentiments.keys())
