@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+import numpy as np
+import plotly.graph_objs as go
 import matplotlib.pyplot as plt
 from textblob import TextBlob
 from nltk.tokenize import sent_tokenize
@@ -83,6 +85,124 @@ def classify_sentiment_textblob(polarity):
         return 'Negative'
     else:
         return 'Neutral'
+
+
+# Add this function to calculate faculty performance score
+def calculate_faculty_performance_score(sentiments, comments):
+    """
+    Calculate a comprehensive performance score based on sentiments and comments.
+    
+    Args:
+        sentiments (dict): Dictionary with sentiment counts
+        comments (pd.DataFrame): DataFrame containing comments
+    
+    Returns:
+        dict: Performance score details
+    """
+    try:
+        # Base sentiment scoring
+        total_comments = sum(sentiments.values())
+        if total_comments == 0:
+            return {
+                'overall_score': 0,
+                'sentiment_score': 0,
+                'comment_depth_score': 0,
+                'detailed_breakdown': {}
+            }
+        
+        # Sentiment weights
+        sentiment_weights = {
+            'Positive': 1.0,
+            'Neutral': 0.5,
+            'Negative': 0.0
+        }
+        
+        # Calculate sentiment-based score
+        sentiment_score = sum(
+            (sentiments[sentiment] * sentiment_weights[sentiment]) / total_comments * 100 
+            for sentiment in ['Positive', 'Neutral', 'Negative']
+        )
+        
+        # Comment depth and quality scoring
+        comment_lengths = comments['Comment'].str.len()
+        avg_comment_length = comment_lengths.mean()
+        comment_depth_score = min(max(avg_comment_length / 100, 0), 1) * 100  # Normalize to 0-100
+        
+        # Combine scores with weights
+        overall_score = (
+            sentiment_score * 0.7 +  # Sentiment carries more weight
+            comment_depth_score * 0.3
+        )
+        
+        return {
+            'overall_score': round(overall_score, 2),
+            'sentiment_score': round(sentiment_score, 2),
+            'comment_depth_score': round(comment_depth_score, 2),
+            'detailed_breakdown': {
+                'total_comments': total_comments,
+                'sentiment_distribution': sentiments
+            }
+        }
+    except Exception as e:
+        st.error(f"Error in calculating performance score: {e}")
+        return {
+            'overall_score': 0,
+            'sentiment_score': 0,
+            'comment_depth_score': 0,
+            'detailed_breakdown': {}
+        }
+
+# Add this function to track faculty performance over time
+def get_faculty_performance_history(df, employee_code):
+    """
+    Retrieve performance history for a faculty member.
+    
+    Args:
+        df (pd.DataFrame): Full feedback dataframe
+        employee_code (str): Employee code to track
+    
+    Returns:
+        pd.DataFrame: Performance history dataframe
+    """
+    try:
+        # Group performance by Academic Year and Semester
+        performance_history = []
+        
+        # Get unique combinations of AY and SEM
+        ay_sem_combinations = df[df['Employee Code'] == employee_code][['AY', 'SEM']].drop_duplicates()
+        
+        for _, row in ay_sem_combinations.iterrows():
+            ay, sem = row['AY'], row['SEM']
+            
+            # Filter data for specific AY and SEM
+            course_comments = df[
+                (df['Employee Code'] == employee_code) & 
+                (df['AY'] == ay) & 
+                (df['SEM'] == sem)
+            ]
+            
+            # Calculate sentiments
+            sentiments = {'Positive': 0, 'Negative': 0, 'Neutral': 0}
+            for comment in course_comments['Comment']:
+                polarity = get_sentiment_textblob(comment)
+                sentiment = classify_sentiment_textblob(polarity)
+                sentiments[sentiment] += 1
+            
+            # Calculate performance score
+            performance = calculate_faculty_performance_score(sentiments, course_comments)
+            
+            performance_history.append({
+                'AY': ay,
+                'SEM': sem,
+                'Overall Score': performance['overall_score'],
+                'Sentiment Score': performance['sentiment_score'],
+                'Comment Depth Score': performance['comment_depth_score']
+            })
+        
+        return pd.DataFrame(performance_history).sort_values(['AY', 'SEM'])
+    except Exception as e:
+        st.error(f"Error in retrieving performance history: {e}")
+        return pd.DataFrame()
 
 # Create a summary with error handling
 def create_personalized_summary(ay, sem, course_name, employee_code, feedback):
@@ -176,6 +296,70 @@ def faculty_page():
     st.subheader("Course Feedback Summary")
     st.write(summary)
 
+    # Performance scoring section
+    st.subheader("Performance Scoring")
+
+    # Calculate sentiments first
+    sentiments = {'Positive': 0, 'Negative': 0, 'Neutral': 0}
+    for _, row in course_comments.iterrows():
+        comment = row['Comment']
+        polarity = get_sentiment_textblob(comment)
+        sentiment = classify_sentiment_textblob(polarity)
+        sentiments[sentiment] += 1
+
+    # Calculate performance score using the now-defined sentiments
+    performance = calculate_faculty_performance_score(sentiments, course_comments)
+    
+    # Display performance metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Overall Score", f"{performance['overall_score']:.2f}%")
+    with col2:
+        st.metric("Sentiment Score", f"{performance['sentiment_score']:.2f}%")
+    with col3:
+        st.metric("Comment Depth Score", f"{performance['comment_depth_score']:.2f}%")
+    
+    # Performance history visualization
+    st.subheader("Performance Trend")
+    performance_history = get_faculty_performance_history(df, selected_employee)
+    
+    if not performance_history.empty:
+        # Create line chart using Plotly for interactive visualization
+        fig = go.Figure()
+        
+        # Add traces for different scores
+        fig.add_trace(go.Scatter(
+            x=[f"{row['AY']} Sem {row['SEM']}" for _, row in performance_history.iterrows()],
+            y=performance_history['Overall Score'],
+            mode='lines+markers',
+            name='Overall Score'
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=[f"{row['AY']} Sem {row['SEM']}" for _, row in performance_history.iterrows()],
+            y=performance_history['Sentiment Score'],
+            mode='lines+markers',
+            name='Sentiment Score'
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=[f"{row['AY']} Sem {row['SEM']}" for _, row in performance_history.iterrows()],
+            y=performance_history['Comment Depth Score'],
+            mode='lines+markers',
+            name='Comment Depth Score'
+        ))
+        
+        fig.update_layout(
+            title='Faculty Performance Trend',
+            xaxis_title='Academic Year and Semester',
+            yaxis_title='Score (%)',
+            height=400
+        )
+        
+        st.plotly_chart(fig)
+    else:
+        st.warning("No performance history available for this faculty member.")
+
     # Sentiment analysis and pie chart
     st.subheader("Sentiment Distribution")
 
@@ -205,10 +389,43 @@ def faculty_page():
     # Display report generation button
     display_report_button(summary, sentiments, fig, selected_employee, selected_course, selected_ay, selected_sem)
 
-    # Show individual comments like in summarizer file
+# Show individual comments in three columns with color-coded sentiments
     st.subheader("Individual Comments")
 
-    for _, row in course_comments.iterrows():
-        st.write(f"- {row['Comment']}")
+    # Categorize comments by sentiment
+    negative_comments = []
+    neutral_comments = []
+    positive_comments = []
 
-    st.write("---")  # Add a separator between courses
+    for _, row in course_comments.iterrows():
+        comment = row['Comment']
+        polarity = get_sentiment_textblob(comment)
+        sentiment = classify_sentiment_textblob(polarity)
+        
+        if sentiment == 'Negative':
+            negative_comments.append(comment)
+        elif sentiment == 'Neutral':
+            neutral_comments.append(comment)
+        else:  # Positive
+            positive_comments.append(comment)
+
+    # Create three columns
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**Negative Comments** 🔴")
+        for comment in negative_comments:
+            st.markdown(f'<div style="background-color: #FF8C8C; color: black; padding: 10px; margin: 5px 0; border-radius: 5px;">{comment}</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("**Neutral Comments** 🔵")
+        for comment in neutral_comments:
+            st.markdown(f'<div style="background-color: #A0D1E6; color: black; padding: 10px; margin: 5px 0; border-radius: 5px;">{comment}</div>', unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("**Positive Comments** 🟢")
+        for comment in positive_comments:
+            st.markdown(f'<div style="background-color: #B2FFB2; color: black; padding: 10px; margin: 5px 0; border-radius: 5px;">{comment}</div>', unsafe_allow_html=True)
+
+    st.write("---")  # Add a separator
+
