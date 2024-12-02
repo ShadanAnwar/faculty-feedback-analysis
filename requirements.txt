@@ -9,3 +9,4 @@ nltk==3.8.1
 openpyxl==3.1.2
 python-dotenv==1.0.1
 numpy==1.26.4
+plotly==5.22.0
